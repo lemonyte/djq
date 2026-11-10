@@ -3,16 +3,25 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Song Requests</title>
+        <title>DJ Room · Song Requests</title>
         <link rel="stylesheet" href="/style.css" />
+        <style>
+            #q {
+                margin-bottom: 8px;
+            }
+        </style>
     </head>
     <body>
         <main>
-            <h1>🎧 Song Requests</h1>
+            <header>
+                <h1 id="title">DJ Room</h1>
+                <p class="subtitle">Song Requests</p>
+            </header>
+
             <h2>Now playing</h2>
             <ul id="now"></ul>
 
-            <h2>Request a song</h2>
+            <h2 id="search-heading">Request a song</h2>
             <input
                 id="q"
                 type="search"
@@ -30,7 +39,7 @@
         </main>
         <div id="toast" role="alert"></div>
         <script type="module">
-            import { element, byId, trackItem, list, toast, api, live } from "/common.js";
+            import { element, byId, trackItem, list, toast, api, live, applyRoom, iconButton } from "/common.js";
 
             let guestId;
             try {
@@ -41,6 +50,7 @@
             const status = { pending: "Waiting for DJ", queued: "Queued ✓", rejected: "Not this time" };
 
             live(`guest=${guestId}`, (state) => {
+                applyRoom(state.room, "Song Requests");
                 list(byId("now"), state.nowPlaying ? [state.nowPlaying] : [], "Nothing playing", (track) =>
                     trackItem(track),
                 );
@@ -93,16 +103,14 @@
                             trackItem(
                                 track,
                                 element(
-                                    "button",
-                                    {
-                                        onclick: async () => {
-                                            if (await send("/api/requests", { uri: track.uri, guestId })) {
-                                                byId("q").value = "";
-                                                byId("results").replaceChildren();
-                                            }
-                                        },
-                                    },
-                                    "Request",
+                                    "span",
+                                    { class: "actions" },
+                                    iconButton("addToQueue", `Request ${track.title}`, null, async () => {
+                                        if (await send("/api/requests", { uri: track.uri, guestId })) {
+                                            byId("q").value = "";
+                                            byId("results").replaceChildren();
+                                        }
+                                    }),
                                 ),
                             ),
                         );

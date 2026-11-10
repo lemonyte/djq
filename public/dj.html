@@ -3,34 +3,205 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>DJ Console</title>
+        <title>DJ Room · DJ Console</title>
         <link rel="stylesheet" href="/style.css" />
         <style>
+            /* Phones: equal-width buttons with the icon above the label. Wider screens: one row of pills. */
+            .toolbar {
+                display: flex;
+                gap: 8px;
+            }
+            .toolbar button {
+                flex: 1 1 0;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                min-height: 64px;
+                padding: 8px 6px;
+                border-radius: 12px;
+                font-size: 0.85rem;
+                line-height: 1.2;
+            }
+            .toolbar svg {
+                width: 22px;
+                height: 22px;
+                flex: none;
+            }
+            @media (min-width: 520px) {
+                .toolbar {
+                    flex-wrap: wrap;
+                }
+                .toolbar button {
+                    flex: none;
+                    flex-direction: row;
+                    min-height: 40px;
+                    padding: 8px 16px;
+                    border-radius: 999px;
+                    font-size: 1rem;
+                }
+                .toolbar svg {
+                    width: 18px;
+                    height: 18px;
+                }
+            }
+
+            .hint {
+                color: var(--muted);
+            }
+
+            #reset {
+                margin-bottom: 8px;
+            }
+
+            dialog {
+                width: min(100% - 32px, 420px);
+                max-height: calc(100% - 32px);
+                padding: 0;
+                border: 0;
+                border-radius: 16px;
+                background: var(--card);
+                color: var(--fg);
+            }
+            dialog::backdrop {
+                background: rgb(0 0 0 / 0.6);
+            }
+            /* Padding lives on the inner div, so a click that lands on the dialog itself is a backdrop click */
+            .dialog-body {
+                padding: 16px;
+            }
+            .dialog-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 16px;
+            }
+            .dialog-head h2 {
+                margin: 0;
+            }
+            .close {
+                width: 40px;
+                padding: 0;
+                flex: none;
+            }
+
             #qr {
-                background: #fff;
+                width: fit-content;
+                margin: 0 auto;
                 padding: 12px;
                 border-radius: 8px;
-                display: inline-block;
+                background: #fff;
             }
-            .row {
+            #qr img {
+                display: block;
+                width: 100%;
+                max-width: 240px;
+                height: auto;
+            }
+            #url {
+                margin: 12px 0 0;
+                text-align: center;
+                color: var(--muted);
+                font-size: 0.85em;
+                overflow-wrap: anywhere;
+            }
+
+            .field {
                 display: flex;
-                gap: 12px;
+                flex-direction: column;
+                gap: 6px;
+                margin-bottom: 16px;
+            }
+            .field input[type="text"] {
+                font: inherit;
+                padding: 10px 12px;
+                border-radius: 8px;
+                border: 1px solid #333;
+                background: var(--bg);
+                color: var(--fg);
+            }
+            .field input[type="color"] {
+                width: 64px;
+                height: 40px;
+                padding: 0;
+                border: 0;
+                background: none;
+            }
+            .check {
+                display: flex;
                 align-items: center;
-                flex-wrap: wrap;
+                gap: 10px;
+            }
+            .check input {
+                width: 20px;
+                height: 20px;
+                flex: none;
             }
         </style>
     </head>
     <body>
         <main>
-            <h1>🎛️ DJ Console</h1>
-            <div class="row">
-                <a id="connect" class="btn" hidden>Connect Spotify</a>
-                <button id="disconnect" class="secondary" hidden>Disconnect Spotify</button>
-                <span id="conn" class="badge"></span>
-            </div>
-            <p>
-                <label><input id="autoQueue" type="checkbox" /> Add requests to the queue automatically</label>
-            </p>
+            <header>
+                <h1 id="title">DJ Room</h1>
+                <p class="subtitle">DJ Console</p>
+            </header>
+
+            <p id="loginHint" class="hint" hidden>Log in with this room's Spotify account to DJ.</p>
+
+            <nav class="toolbar" aria-label="DJ controls">
+                <button id="spotify" type="button" disabled>
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+                        <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+                    </svg>
+                    <span id="spotifyLabel">Connect Spotify</span>
+                </button>
+                <button id="showQr" class="secondary" type="button" aria-haspopup="dialog">
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <rect x="3" y="3" width="7" height="7" rx="1" />
+                        <rect x="14" y="3" width="7" height="7" rx="1" />
+                        <rect x="3" y="14" width="7" height="7" rx="1" />
+                        <path d="M14 14h3v3h-3zM21 14v.01M14 21h.01M17 21h4v-4" />
+                    </svg>
+                    <span>Show QR</span>
+                </button>
+                <button id="showSettings" class="secondary" type="button" aria-haspopup="dialog">
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M4 6h16M4 12h16M4 18h16" />
+                        <circle cx="9" cy="6" r="2" fill="currentColor" />
+                        <circle cx="15" cy="12" r="2" fill="currentColor" />
+                        <circle cx="7" cy="18" r="2" fill="currentColor" />
+                    </svg>
+                    <span>Settings</span>
+                </button>
+            </nav>
 
             <h2>Pending requests</h2>
             <ul id="pending"></ul>
@@ -40,14 +211,43 @@
             <h2>Up next</h2>
             <ul id="queue"></ul>
 
-            <h2>Guests scan this</h2>
-            <div id="qr"></div>
-            <p id="url" class="badge"></p>
-
             <h2>Handled</h2>
             <button id="reset" class="secondary">Clear all requests</button>
             <ul id="done"></ul>
         </main>
+
+        <dialog id="qrDialog" aria-labelledby="qrTitle">
+            <div class="dialog-body">
+                <div class="dialog-head">
+                    <h2 id="qrTitle">Guests scan this</h2>
+                    <button class="close secondary" type="button" aria-label="Close">✕</button>
+                </div>
+                <div id="qr"></div>
+                <p id="url"></p>
+            </div>
+        </dialog>
+
+        <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+            <div class="dialog-body">
+                <div class="dialog-head">
+                    <h2 id="settingsTitle">Settings</h2>
+                    <button class="close secondary" type="button" aria-label="Close">✕</button>
+                </div>
+                <label class="field">
+                    Room name
+                    <input id="roomName" type="text" maxlength="60" />
+                </label>
+                <label class="field">
+                    Accent color
+                    <input id="accent" type="color" value="#ffc23d" />
+                </label>
+                <label class="check">
+                    <input id="autoQueue" type="checkbox" />
+                    Add requests to the queue automatically
+                </label>
+            </div>
+        </dialog>
+
         <div id="toast" role="alert"></div>
         <script
             src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
@@ -55,7 +255,19 @@
             crossorigin="anonymous"
         ></script>
         <script type="module">
-            import { element, byId, trackItem, list, toast, api, live, base } from "/common.js";
+            import {
+                element,
+                byId,
+                trackItem,
+                list,
+                toast,
+                api,
+                live,
+                base,
+                applyRoom,
+                DEFAULT_ROOM_NAME,
+                iconButton,
+            } from "/common.js";
 
             const fromHash = new URLSearchParams(location.hash.slice(1)).get("key");
             let key = fromHash;
@@ -74,9 +286,31 @@
             }
 
             const guestUrl = location.origin + base;
-            new QRCode(byId("qr"), { text: guestUrl, width: 220, height: 220 });
+            new QRCode(byId("qr"), { text: guestUrl, width: 240, height: 240 });
             byId("url").textContent = guestUrl;
-            byId("connect").href = "/auth/login";
+            byId("roomName").placeholder = DEFAULT_ROOM_NAME;
+
+            // --- modals ---
+            byId("showQr").onclick = () => byId("qrDialog").showModal();
+            byId("showSettings").onclick = () => byId("settingsDialog").showModal();
+            for (const dialog of document.querySelectorAll("dialog")) {
+                dialog.addEventListener("click", (event) => {
+                    if (event.target === dialog) {
+                        dialog.close(); // backdrop click
+                    }
+                });
+                dialog.querySelector(".close").onclick = () => dialog.close();
+            }
+
+            // --- actions ---
+            let connected = false;
+            byId("spotify").onclick = () => {
+                if (connected) {
+                    api("/api/disconnect", { key }).catch((error) => toast(error.message));
+                } else {
+                    location.href = "/auth/login";
+                }
+            };
 
             async function act(id, what) {
                 try {
@@ -86,17 +320,21 @@
                 }
             }
 
-            byId("disconnect").onclick = () => {
-                api("/api/disconnect", { key }).catch((error) => toast(error.message));
-            };
-
+            async function saveSetting(body) {
+                try {
+                    await api("/api/settings", { body, key });
+                    return true;
+                } catch (error) {
+                    toast(error.message);
+                    return false;
+                }
+            }
+            byId("roomName").onchange = (event) => saveSetting({ name: event.target.value });
+            byId("accent").onchange = (event) => saveSetting({ accent: event.target.value });
             byId("autoQueue").onchange = async (event) => {
                 const checkbox = event.target;
-                try {
-                    await api("/api/settings", { body: { autoQueue: checkbox.checked }, key });
-                } catch (error) {
+                if (!(await saveSetting({ autoQueue: checkbox.checked }))) {
                     checkbox.checked = !checkbox.checked;
-                    toast(error.message);
                 }
             };
 
@@ -106,19 +344,37 @@
                 }
             };
 
+            // --- live state ---
+            function showSpotifyButton(label, primary) {
+                byId("spotify").disabled = false;
+                byId("spotifyLabel").textContent = label;
+                byId("spotify").classList.toggle("secondary", !primary);
+            }
+
             // shortcut: key goes in the WebSocket query string since browsers can't set headers on it
             live(`key=${encodeURIComponent(key)}`, (state) => {
-                if (!state.dj) {
+                applyRoom(state.room, "DJ Console");
+                const isDj = !!state.dj;
+                byId("loginHint").hidden = isDj;
+                byId("showQr").hidden = !isDj;
+                byId("showSettings").hidden = !isDj;
+                if (!isDj) {
                     // Logging in with the Spotify account that owns this room brings the key back.
-                    byId("connect").hidden = false;
-                    byId("disconnect").hidden = true;
-                    byId("conn").textContent = "Log in with this room's Spotify account to DJ";
+                    connected = false;
+                    showSpotifyButton("Log in with Spotify", true);
                     return;
                 }
-                byId("connect").hidden = state.connected;
-                byId("disconnect").hidden = !state.connected;
+                connected = state.connected;
+                showSpotifyButton(connected ? "Disconnect Spotify" : "Connect Spotify", !connected);
                 byId("autoQueue").checked = state.autoQueue;
-                byId("conn").textContent = state.connected ? "Spotify connected" : "Spotify not connected";
+                // Don't overwrite a field while the DJ is editing it.
+                if (document.activeElement !== byId("roomName")) {
+                    byId("roomName").value = state.room.name ?? "";
+                }
+                if (document.activeElement !== byId("accent")) {
+                    byId("accent").value = state.room.accent ?? "#ffc23d";
+                }
+
                 list(byId("now"), state.nowPlaying ? [state.nowPlaying] : [], "Nothing playing", (track) =>
                     trackItem(track),
                 );
@@ -129,18 +385,10 @@
                         request,
                         element("span", { class: "badge" }, `▲ ${request.votes}`),
                         element(
-                            "button",
-                            { "aria-label": `Queue ${request.title}`, onclick: () => act(request.id, "approve") },
-                            "Queue",
-                        ),
-                        element(
-                            "button",
-                            {
-                                class: "danger",
-                                "aria-label": `Reject ${request.title}`,
-                                onclick: () => act(request.id, "reject"),
-                            },
-                            "✕",
+                            "span",
+                            { class: "actions" },
+                            iconButton("addToQueue", `Queue ${request.title}`, null, () => act(request.id, "approve")),
+                            iconButton("reject", `Reject ${request.title}`, "danger", () => act(request.id, "reject")),
                         ),
                     ),
                 );
@@ -154,9 +402,11 @@
                             element("span", { class: "badge" }, request.status),
                             request.status === "rejected" &&
                                 element(
-                                    "button",
-                                    { class: "secondary", onclick: () => act(request.id, "approve") },
-                                    "Queue anyway",
+                                    "span",
+                                    { class: "actions" },
+                                    iconButton("addToQueue", `Queue ${request.title} anyway`, "secondary", () =>
+                                        act(request.id, "approve"),
+                                    ),
                                 ),
                         ),
                 );

@@ -5,6 +5,8 @@ const URI_RE = /^spotify:track:[A-Za-z0-9]{22}$/;
 const GUEST_RE = /^[\w-]{8,64}$/;
 const MAX_PENDING = 3;
 const POLL_MS = 10_000;
+const MAX_NAME = 60;
+const ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
 
 type Tokens = { access: string; refresh: string; expires: number };
 type Track = { uri: string; title: string; artist: string; art: string | null };
@@ -44,22 +46,22 @@ export class Room extends DurableObject<Env> {
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
         ctx.storage.sql.exec(`
-			CREATE TABLE IF NOT EXISTS requests (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				uri TEXT NOT NULL UNIQUE,
-				title TEXT NOT NULL,
-				artist TEXT NOT NULL,
-				art TEXT,
-				status TEXT NOT NULL DEFAULT 'pending',
-				guest_id TEXT NOT NULL,
-				created_at INTEGER NOT NULL
-			);
-			CREATE TABLE IF NOT EXISTS votes (
-				request_id INTEGER NOT NULL,
-				guest_id TEXT NOT NULL,
-				PRIMARY KEY (request_id, guest_id)
-			);
-		`);
+            CREATE TABLE IF NOT EXISTS requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uri TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                art TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                guest_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS votes (
+                request_id INTEGER NOT NULL,
+                guest_id TEXT NOT NULL,
+                PRIMARY KEY (request_id, guest_id)
+            );
+        `);
     }
 
     async fetch(req: Request): Promise<Response> {
@@ -104,13 +106,7 @@ export class Room extends DurableObject<Env> {
             if (!dj) {
                 throw new HttpError(401, "DJ key required");
             }
-            const { autoQueue } = await this.body(req);
-            if (typeof autoQueue !== "boolean") {
-                throw new HttpError(400, "autoQueue must be true or false");
-            }
-            this.ctx.storage.kv.put("autoQueue", autoQueue);
-            this.broadcast();
-            return Response.json({ autoQueue });
+            return this.settings(await this.body(req));
         }
 
         const match = path.match(/^\/api\/requests\/(\d+)\/(vote|approve|reject)$/);
@@ -274,7 +270,7 @@ export class Room extends DurableObject<Env> {
         const row = sql
             .exec<{ id: number }>(
                 `INSERT INTO requests (uri, title, artist, art, guest_id, created_at) VALUES (?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(uri) DO UPDATE SET uri = uri RETURNING id`,
+                ON CONFLICT(uri) DO UPDATE SET uri = uri RETURNING id`,
                 uri,
                 details.title,
                 details.artist,
@@ -350,6 +346,31 @@ export class Room extends DurableObject<Env> {
         return Response.json({ id });
     }
 
+    // Partial update: only the fields present in the body change.
+    settings({ autoQueue, name, accent }: Record<string, unknown>): Response {
+        if (autoQueue !== undefined && typeof autoQueue !== "boolean") {
+            throw new HttpError(400, "autoQueue must be true or false");
+        }
+        if (name !== undefined && (typeof name !== "string" || name.trim().length > MAX_NAME)) {
+            throw new HttpError(400, `Room name must be at most ${MAX_NAME} characters`);
+        }
+        if (accent !== undefined && (typeof accent !== "string" || !ACCENT_RE.test(accent))) {
+            throw new HttpError(400, "Accent must be a color like #ffc23d");
+        }
+        const kv = this.ctx.storage.kv;
+        if (autoQueue !== undefined) {
+            kv.put("autoQueue", autoQueue);
+        }
+        if (name !== undefined) {
+            kv.put("name", name.trim()); // empty means the default name
+        }
+        if (accent !== undefined) {
+            kv.put("accent", accent.toLowerCase());
+        }
+        this.broadcast();
+        return Response.json({});
+    }
+
     reset(): Response {
         this.ctx.storage.sql.exec("DELETE FROM votes; DELETE FROM requests;");
         this.broadcast();
@@ -393,10 +414,10 @@ export class Room extends DurableObject<Env> {
         const rows = this.ctx.storage.sql
             .exec<any>(
                 `SELECT r.id, r.uri, r.title, r.artist, r.art, r.status, r.guest_id = ?1 AS mine,
-			        COUNT(v.guest_id) AS votes, COALESCE(SUM(v.guest_id = ?1), 0) AS voted
-			 FROM requests r LEFT JOIN votes v ON v.request_id = r.id
-			 GROUP BY r.id
-			 ORDER BY r.status = 'pending' DESC, votes DESC, r.created_at`,
+                COUNT(v.guest_id) AS votes, COALESCE(SUM(v.guest_id = ?1), 0) AS voted
+                FROM requests r LEFT JOIN votes v ON v.request_id = r.id
+                GROUP BY r.id
+                ORDER BY r.status = 'pending' DESC, votes DESC, r.created_at`,
                 guest ?? "",
             )
             .toArray();
@@ -409,7 +430,13 @@ export class Room extends DurableObject<Env> {
             connected: !!this.ctx.storage.kv.get("tokens"),
             autoQueue: !!this.ctx.storage.kv.get("autoQueue"),
         };
-        return { ...playback, requests, ...djState };
+        // Everyone sees the room's look; null means the page default.
+        const room = {
+            name: this.ctx.storage.kv.get<string>("name") || null,
+            accent: this.ctx.storage.kv.get<string>("accent") ?? null,
+            autoQueue: this.ctx.storage.kv.get<boolean>("autoQueue") ?? null,
+        };
+        return { ...playback, requests, room, ...djState };
     }
 
     broadcast() {

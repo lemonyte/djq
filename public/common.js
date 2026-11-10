@@ -71,3 +71,62 @@ export function live(query, onState) {
     };
     open();
 }
+
+// Shown before the room loads, and when a room has no name.
+export const DEFAULT_ROOM_NAME = "DJ Room";
+
+// Applies the DJ's room name and accent color. Text on accent-colored buttons turns black or white to stay readable.
+export function applyRoom(room, subtitle) {
+    const name = room.name ?? DEFAULT_ROOM_NAME;
+    byId("title").textContent = name;
+    document.title = `${name} · ${subtitle}`;
+    byId("search-heading").textContent = room.autoQueue ? "Queue a song" : "Request a song";
+    const rootStyle = document.documentElement.style;
+    if (room.accent) {
+        rootStyle.setProperty("--accent", room.accent);
+        rootStyle.setProperty("--on-accent", luminance(room.accent) > 0.179 ? "#000" : "#fff");
+    } else {
+        rootStyle.removeProperty("--accent");
+        rootStyle.removeProperty("--on-accent");
+    }
+}
+
+// WCAG relative luminance of a #rrggbb color; 0.179 is where black and white text have equal contrast.
+function luminance(hex) {
+    const [red, green, blue] = [1, 3, 5].map((start) => {
+        const channel = parseInt(hex.slice(start, start + 2), 16) / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+// Inline SVG icons (element() can't create SVG nodes), drawn on a 24x24 grid.
+const ICONS = {
+    addToQueue: "M3 7h8M3 13h18M3 19h18M19 1v8M15 5h8",
+    reject: "M6 6l12 12M18 6L6 18",
+};
+
+function icon(name) {
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNamespace, "svg");
+    const attributes = {
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "aria-hidden": "true",
+    };
+    for (const [attribute, value] of Object.entries(attributes)) {
+        svg.setAttribute(attribute, value);
+    }
+    const path = document.createElementNS(svgNamespace, "path");
+    path.setAttribute("d", ICONS[name]);
+    svg.append(path);
+    return svg;
+}
+
+// A square icon button for a card's .actions group; the label is for screen readers and the hover tooltip.
+export function iconButton(name, label, className, onclick) {
+    return element("button", { class: className, "aria-label": label, title: label, onclick }, icon(name));
+}

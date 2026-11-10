@@ -4,6 +4,7 @@
     --fg: #f2f2f5;
     --muted: #9a9aa8;
     --accent: #ffc23d;
+    --on-accent: #000;
     --danger: #ff5c5c;
     color-scheme: dark;
 }
@@ -29,7 +30,17 @@ main {
 
 h1 {
     font-size: 1.4rem;
-    margin: 0 0 12px;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+header {
+    margin-bottom: 16px;
+}
+
+.subtitle {
+    margin: 2px 0 0;
+    color: var(--muted);
 }
 
 h2 {
@@ -65,6 +76,10 @@ li.track .noart {
     background: #333;
 }
 
+#now li.track {
+    box-shadow: var(--accent) 0 0 10px;
+}
+
 .meta {
     flex: 1;
     min-width: 0;
@@ -95,7 +110,7 @@ button,
     border-radius: 999px;
     padding: 8px 14px;
     background: var(--accent);
-    color: #000;
+    color: var(--on-accent);
     font-weight: 600;
     cursor: pointer;
     text-decoration: none;
@@ -174,7 +189,7 @@ input[type="search"] {
     place-items: center;
     font-weight: 600;
     background: var(--accent);
-    color: #000;
+    color: var(--on-accent);
 }
 
 /* Vote count on requests that can't be voted on anymore */
@@ -192,4 +207,29 @@ span.vote {
 .meta a:hover,
 .meta a:focus-visible {
     text-decoration: underline;
+}
+
+/* Row of full-height square buttons on the card's right edge, like .vote; only the outer corners are rounded */
+.actions {
+    align-self: stretch;
+    display: flex;
+    margin: -8px -8px -8px 0;
+}
+
+.actions button {
+    width: 64px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    display: grid;
+    place-items: center;
+}
+
+.actions button:last-child {
+    border-radius: 0 8px 8px 0;
+}
+
+.actions svg {
+    width: 24px;
+    height: 24px;
 }

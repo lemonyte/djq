@@ -2,6 +2,8 @@ import { runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
+import type { Room } from "../src/room";
+
 const uri = (char: string) => `spotify:track:${char.repeat(22)}`;
 // The room most tests use; `key` is its DJ key, handed out by login().
 const roomId = env.ROOM.idFromName("user-a");
@@ -187,7 +189,7 @@ describe("spotify tokens", () => {
 });
 
 describe("rooms", () => {
-    // Fake Spotify for the login flow: the code is the Spotify user id, so each test picks the account.
+    // Fake Spotify for the login flow: the code is the Spotify account id, so each test picks the account.
     const loginMock = () =>
         spotify.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
             const url = new URL(String(input));
@@ -196,7 +198,9 @@ describe("rooms", () => {
                 return Response.json({ access_token: `tok-${code}`, refresh_token: "r", expires_in: 3600 });
             }
             if (url.pathname === "/v1/me") {
-                return Response.json({ id: (init!.headers as any).Authorization.slice("Bearer tok-".length) });
+                const accountId = (init!.headers as any).Authorization.slice("Bearer tok-".length);
+                // The old `id` field is different on purpose: rooms must be keyed on account_id.
+                return Response.json({ account_id: accountId, id: "legacy-id", display_name: "Sam" });
             }
             return new Response("unexpected", { status: 500 });
         });
@@ -301,5 +305,45 @@ describe("auto-queue", () => {
         const res = await api("/api/requests", { uri: uri("C"), guestId: "guest-auto3" }, undefined, autoRoom);
         expect(await status((await res.json<any>()).id)).toBe("pending");
         expect(queueCalls()).toEqual([]);
+    });
+});
+
+describe("room look", () => {
+    // Own room, so the name and color don't leak into other tests.
+    const lookRoom = env.ROOM.idFromName("user-look");
+    let lookKey: string;
+    beforeEach(async () => {
+        lookKey = await room(lookRoom).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, "Sam");
+    });
+
+    // The state a guest's WebSocket would receive, without opening one.
+    const guestRoom = () =>
+        runInDurableObject(room(lookRoom), (instance: Room) => {
+            const fakeSocket = { deserializeAttachment: () => ({ dj: false, guest: null }) } as unknown as WebSocket;
+            return instance.view(fakeSocket).room;
+        });
+
+    it("shows the DJ's name and accent to guests", async () => {
+        expect(await guestRoom()).toEqual({ name: "Sam's Room", accent: null });
+        const res = await api("/api/settings", { name: "  Rooftop Party  ", accent: "#3D7BFF" }, lookKey, lookRoom);
+        expect(res.status).toBe(200);
+        expect(await guestRoom()).toEqual({ name: "Rooftop Party", accent: "#3d7bff" });
+        // Changing one field leaves the other alone; an empty name goes back to the default.
+        await api("/api/settings", { name: "" }, lookKey, lookRoom);
+        expect(await guestRoom()).toEqual({ name: null, accent: "#3d7bff" });
+    });
+
+    it("logging in again keeps a name the DJ picked", async () => {
+        await api("/api/settings", { name: "Rooftop" }, lookKey, lookRoom);
+        await room(lookRoom).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, "Sam");
+        expect((await guestRoom()).name).toBe("Rooftop");
+    });
+
+    it("rejects bad values and non-DJs", async () => {
+        expect((await api("/api/settings", { name: "Mine" }, undefined, lookRoom)).status).toBe(401);
+        expect((await api("/api/settings", { accent: "red" }, lookKey, lookRoom)).status).toBe(400);
+        expect((await api("/api/settings", { accent: "#fff" }, lookKey, lookRoom)).status).toBe(400);
+        expect((await api("/api/settings", { name: "x".repeat(61) }, lookKey, lookRoom)).status).toBe(400);
+        expect((await api("/api/settings", { name: 42 }, lookKey, lookRoom)).status).toBe(400);
     });
 });
