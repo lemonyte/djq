@@ -440,11 +440,19 @@ export class Room extends DurableObject<Env> {
         return Response.json({});
     }
 
-    // Forget this room's Spotify tokens. The DJ key stays, so "Connect Spotify" logs back into the same room.
+    // Forget this room's Spotify tokens and DJ key: logs out every device, including anyone the key leaked to.
+    // The room belongs to the Spotify account, so logging in again returns here with a fresh key.
     disconnect(): Response {
-        this.ctx.storage.kv.delete("tokens");
-        this.ctx.storage.kv.delete("playback");
+        const kv = this.ctx.storage.kv;
+        kv.delete("tokens");
+        kv.delete("playback");
+        kv.delete("djKey");
         this.broadcast();
+        for (const ws of this.ctx.getWebSockets()) {
+            if ((ws.deserializeAttachment() as Attachment).dj) {
+                ws.close(4001, "Logged out"); // it reconnects with the old key, which no longer works
+            }
+        }
         return Response.json({});
     }
 
