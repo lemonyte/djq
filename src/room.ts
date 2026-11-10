@@ -6,6 +6,7 @@ const URI_RE = /^spotify:track:[A-Za-z0-9]{22}$/;
 const GUEST_RE = /^[\w-]{8,64}$/;
 const MAX_PENDING = 3;
 const POLL_MS = 10_000;
+const POLL_FAILED_MS = 60_000;
 const MAX_NAME = 60;
 const ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
 const MAX_PUSH_DEVICES = 10;
@@ -610,14 +611,18 @@ export class Room extends DurableObject<Env> {
         if (!this.ctx.getWebSockets().length) {
             return; // nobody watching, stop polling
         }
+        let failed = false;
         if (this.ctx.storage.kv.get("tokens")) {
             try {
                 await this.poll();
             } catch (error) {
+                failed = true;
                 console.error("poll failed", error);
             }
         }
-        await this.ctx.storage.setAlarm(Date.now() + POLL_MS);
+        // Nothing playing or Spotify down: check less often, so forgotten tabs don't use up the app's shared rate limit.
+        // approve() checks again after a second, so a room that starts playing catches up quickly.
+        await this.ctx.storage.setAlarm(Date.now() + (failed ? POLL_FAILED_MS : POLL_MS));
     }
 
     async poll() {

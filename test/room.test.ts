@@ -480,3 +480,22 @@ describe("home screen manifest", () => {
         expect((await odd.json<any>()).start_url).toBe(`/r/${roomId.toString()}/dj`);
     });
 });
+
+describe("polling", () => {
+    const pollRoom = env.ROOM.idFromName("user-poll");
+
+    it("checks less often while nothing is playing", async () => {
+        await room(pollRoom).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, null);
+        const res = await exports.default.fetch(`https://dj.test/r/${pollRoom.toString()}/api/ws`, {
+            headers: { Upgrade: "websocket" },
+        });
+        res.webSocket!.accept(); // someone is watching, so the alarm keeps polling
+        spotify.mockImplementation(async () => new Response("no device", { status: 404 }));
+        const nextAlarm = await runInDurableObject(room(pollRoom), async (instance: Room, state) => {
+            await instance.alarm();
+            return state.storage.getAlarm();
+        });
+        expect(nextAlarm! - Date.now()).toBeGreaterThan(30_000);
+        res.webSocket!.close();
+    });
+});
