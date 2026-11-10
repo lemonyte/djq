@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Song Requests</title>
+        <link rel="stylesheet" href="/style.css" />
+    </head>
+    <body>
+        <main>
+            <h1>🎧 Song Requests</h1>
+            <h2>Now playing</h2>
+            <ul id="now"></ul>
+
+            <h2>Request a song</h2>
+            <input
+                id="q"
+                type="search"
+                placeholder="Search for a song…"
+                aria-label="Search for a song"
+                autocomplete="off"
+            />
+            <ul id="results" aria-live="polite"></ul>
+
+            <h2>Requests</h2>
+            <ul id="requests"></ul>
+
+            <h2>Up next</h2>
+            <ul id="queue"></ul>
+        </main>
+        <div id="toast" role="alert"></div>
+        <script type="module">
+            import { element, byId, trackItem, list, toast, api, live } from "/common.js";
+
+            let guestId;
+            try {
+                guestId = localStorage.guestId ??= crypto.randomUUID();
+            } catch {
+                guestId = crypto.randomUUID();
+            }
+            const status = { pending: "Waiting for DJ", queued: "Queued ✓", rejected: "Not this time" };
+
+            live(`guest=${guestId}`, (state) => {
+                list(byId("now"), state.nowPlaying ? [state.nowPlaying] : [], "Nothing playing", (track) =>
+                    trackItem(track),
+                );
+                list(byId("queue"), state.queue, "Queue is empty", (track) => trackItem(track));
+                list(byId("requests"), state.requests, "No requests yet. Be the first!", (request) =>
+                    trackItem(
+                        request,
+                        request.mine && element("span", { class: "badge" }, status[request.status]),
+                        request.status === "pending"
+                            ? element(
+                                  "button",
+                                  {
+                                      class: "vote",
+                                      disabled: request.voted,
+                                      "aria-label": `Upvote ${request.title}`,
+                                      onclick: () => send(`/api/requests/${request.id}/vote`, { guestId }),
+                                  },
+                                  `▲ ${request.votes}`,
+                              )
+                            : element("span", { class: "vote" }, `▲ ${request.votes}`),
+                    ),
+                );
+            });
+
+            async function send(path, body) {
+                try {
+                    await api(path, { body });
+                    return true;
+                } catch (error) {
+                    toast(error.message);
+                    return false;
+                }
+            }
+
+            let timer;
+            byId("q").addEventListener("input", (event) => {
+                clearTimeout(timer);
+                const query = event.target.value.trim();
+                if (!query) {
+                    byId("results").replaceChildren();
+                    return;
+                }
+                timer = setTimeout(async () => {
+                    try {
+                        const tracks = await api(`/api/search?q=${encodeURIComponent(query)}`);
+                        if (byId("q").value.trim() !== query) {
+                            return; // a newer search is on its way
+                        }
+                        list(byId("results"), tracks, "No results", (track) =>
+                            trackItem(
+                                track,
+                                element(
+                                    "button",
+                                    {
+                                        onclick: async () => {
+                                            if (await send("/api/requests", { uri: track.uri, guestId })) {
+                                                byId("q").value = "";
+                                                byId("results").replaceChildren();
+                                            }
+                                        },
+                                    },
+                                    "Request",
+                                ),
+                            ),
+                        );
+                    } catch (error) {
+                        toast(error.message);
+                    }
+                }, 300);
+            });
+        </script>
+    </body>
+</html>

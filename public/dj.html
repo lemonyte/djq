@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>DJ Console</title>
+        <link rel="stylesheet" href="/style.css" />
+        <style>
+            #qr {
+                background: #fff;
+                padding: 12px;
+                border-radius: 8px;
+                display: inline-block;
+            }
+            .row {
+                display: flex;
+                gap: 12px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>🎛️ DJ Console</h1>
+            <div class="row">
+                <a id="connect" class="btn" hidden>Connect Spotify</a>
+                <button id="disconnect" class="secondary" hidden>Disconnect Spotify</button>
+                <span id="conn" class="badge"></span>
+            </div>
+            <p>
+                <label><input id="autoQueue" type="checkbox" /> Add requests to the queue automatically</label>
+            </p>
+
+            <h2>Pending requests</h2>
+            <ul id="pending"></ul>
+
+            <h2>Now playing</h2>
+            <ul id="now"></ul>
+            <h2>Up next</h2>
+            <ul id="queue"></ul>
+
+            <h2>Guests scan this</h2>
+            <div id="qr"></div>
+            <p id="url" class="badge"></p>
+
+            <h2>Handled</h2>
+            <button id="reset" class="secondary">Clear all requests</button>
+            <ul id="done"></ul>
+        </main>
+        <div id="toast" role="alert"></div>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+            integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA=="
+            crossorigin="anonymous"
+        ></script>
+        <script type="module">
+            import { element, byId, trackItem, list, toast, api, live, base } from "/common.js";
+
+            const fromHash = new URLSearchParams(location.hash.slice(1)).get("key");
+            let key = fromHash;
+            const stored = `djKey:${base}`; // per room, so one browser can run two rooms
+            try {
+                if (fromHash) {
+                    localStorage[stored] = fromHash;
+                }
+                key ??= localStorage[stored];
+            } catch {
+                // storage blocked: the key from the URL still works for this visit
+            }
+            key ??= ""; // no key: the console asks the DJ to log in with Spotify
+            if (fromHash) {
+                history.replaceState(null, "", location.pathname); // keep the key out of the address bar
+            }
+
+            const guestUrl = location.origin + base;
+            new QRCode(byId("qr"), { text: guestUrl, width: 220, height: 220 });
+            byId("url").textContent = guestUrl;
+            byId("connect").href = "/auth/login";
+
+            async function act(id, what) {
+                try {
+                    await api(`/api/requests/${id}/${what}`, { key });
+                } catch (error) {
+                    toast(error.message);
+                }
+            }
+
+            byId("disconnect").onclick = () => {
+                api("/api/disconnect", { key }).catch((error) => toast(error.message));
+            };
+
+            byId("autoQueue").onchange = async (event) => {
+                const checkbox = event.target;
+                try {
+                    await api("/api/settings", { body: { autoQueue: checkbox.checked }, key });
+                } catch (error) {
+                    checkbox.checked = !checkbox.checked;
+                    toast(error.message);
+                }
+            };
+
+            byId("reset").onclick = () => {
+                if (confirm("Clear all requests and votes for a new party?")) {
+                    api("/api/reset", { key }).catch((error) => toast(error.message));
+                }
+            };
+
+            // shortcut: key goes in the WebSocket query string since browsers can't set headers on it
+            live(`key=${encodeURIComponent(key)}`, (state) => {
+                if (!state.dj) {
+                    // Logging in with the Spotify account that owns this room brings the key back.
+                    byId("connect").hidden = false;
+                    byId("disconnect").hidden = true;
+                    byId("conn").textContent = "Log in with this room's Spotify account to DJ";
+                    return;
+                }
+                byId("connect").hidden = state.connected;
+                byId("disconnect").hidden = !state.connected;
+                byId("autoQueue").checked = state.autoQueue;
+                byId("conn").textContent = state.connected ? "Spotify connected" : "Spotify not connected";
+                list(byId("now"), state.nowPlaying ? [state.nowPlaying] : [], "Nothing playing", (track) =>
+                    trackItem(track),
+                );
+                list(byId("queue"), state.queue, "Queue is empty", (track) => trackItem(track));
+                const pending = state.requests.filter((request) => request.status === "pending");
+                list(byId("pending"), pending, "No pending requests", (request) =>
+                    trackItem(
+                        request,
+                        element("span", { class: "badge" }, `▲ ${request.votes}`),
+                        element(
+                            "button",
+                            { "aria-label": `Queue ${request.title}`, onclick: () => act(request.id, "approve") },
+                            "Queue",
+                        ),
+                        element(
+                            "button",
+                            {
+                                class: "danger",
+                                "aria-label": `Reject ${request.title}`,
+                                onclick: () => act(request.id, "reject"),
+                            },
+                            "✕",
+                        ),
+                    ),
+                );
+                list(
+                    byId("done"),
+                    state.requests.filter((request) => request.status !== "pending"),
+                    "Nothing yet",
+                    (request) =>
+                        trackItem(
+                            request,
+                            element("span", { class: "badge" }, request.status),
+                            request.status === "rejected" &&
+                                element(
+                                    "button",
+                                    { class: "secondary", onclick: () => act(request.id, "approve") },
+                                    "Queue anyway",
+                                ),
+                        ),
+                );
+            });
+        </script>
+    </body>
+</html>

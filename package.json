@@ -1,0 +1,24 @@
+{
+    "name": "djq",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "wrangler dev",
+        "deploy": "wrangler deploy",
+        "test": "vitest run",
+        "lint": "oxlint",
+        "lint:fix": "oxlint --fix",
+        "fmt": "oxfmt",
+        "fmt:check": "oxfmt --check",
+        "types": "wrangler types src/worker-configuration.d.ts"
+    },
+    "devDependencies": {
+        "@cloudflare/vitest-plugin": "^1.6.0",
+        "oxfmt": "^0.78.0",
+        "oxlint": "^1.93.0",
+        "oxlint-tsgolint": "^7.0.2006",
+        "typescript": "^7.0.2",
+        "vitest": "^4.1.12",
+        "wrangler": "^4.159.0"
+    }
+}
