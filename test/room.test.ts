@@ -146,11 +146,15 @@ describe("dj", () => {
         expect(await rows()).toEqual([]);
     });
 
-    it("disconnect forgets Spotify but keeps the DJ key, DJ only", async () => {
+    it("disconnect forgets Spotify and retires the DJ key, DJ only", async () => {
         expect((await api("/api/disconnect")).status).toBe(401);
         expect((await api("/api/disconnect", undefined, key)).status).toBe(200);
         expect(await runInDurableObject(room(), (_instance, state) => state.storage.kv.get("tokens"))).toBeUndefined();
-        expect((await api("/api/reset", undefined, key)).status).toBe(200);
+        expect((await api("/api/reset", undefined, key)).status).toBe(401);
+        // Logging in again hands out a new key for the same room.
+        const newKey = await room().login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, null);
+        expect(newKey).not.toBe(key);
+        expect((await api("/api/reset", undefined, newKey)).status).toBe(200);
     });
 
     it("rejects a request", async () => {
@@ -238,6 +242,16 @@ describe("rooms", () => {
         ).toMatchObject({ access: "tok-user-b" });
         // Same account again: same room, same key.
         expect((await callback("user-b")).headers.get("Location")).toBe(`https://dj.test${path}#key=${hash}`);
+    });
+
+    it("callback refuses a profile without an account id", async () => {
+        spotify.mockImplementation(async (input) => {
+            if (new URL(urlOf(input)).pathname === "/api/token") {
+                return Response.json({ access_token: "tok", refresh_token: "r", expires_in: 3600 });
+            }
+            return Response.json({ display_name: "Sam" });
+        });
+        expect((await callback("user-e")).status).toBe(502);
     });
 
     it("callback rejects a missing or wrong state", async () => {

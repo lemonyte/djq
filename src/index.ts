@@ -57,7 +57,11 @@ async function route(req: Request, env: Env): Promise<Response> {
         if (!me.ok) {
             throw new HttpError(502, `Spotify profile error ${me.status}: ${(await me.text()).slice(0, 200)}`);
         }
-        const userProfile = await me.json<{ account_id: string; display_name: string | null }>();
+        const userProfile = await me.json<{ account_id?: unknown; display_name: string | null }>();
+        // Without this check, a missing id would put every DJ into one shared room named "undefined".
+        if (typeof userProfile.account_id !== "string" || !userProfile.account_id) {
+            throw new HttpError(502, "Spotify didn't return an account id");
+        }
         // One room per Spotify account. The hex id hides the account name and needs no lookup table.
         // shortcut: room URLs are 64 hex chars, fine inside a QR code; add a short-slug lookup if people need to type them
         const id = env.ROOM.idFromName(userProfile.account_id);
