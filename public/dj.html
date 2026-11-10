@@ -131,13 +131,6 @@
                 background: var(--bg);
                 color: var(--fg);
             }
-            .field input[type="color"] {
-                /* width: 64px;
-                height: 40px;
-                padding: 0;
-                border: 0;
-                background: none; */
-            }
             .check {
                 display: flex;
                 align-items: center;
@@ -464,7 +457,7 @@
                 }
                 connected = state.connected;
                 showSpotifyButton(connected ? "Disconnect Spotify" : "Connect Spotify", !connected);
-                byId("autoQueue").checked = state.autoQueue;
+                byId("autoQueue").checked = !!state.room.autoQueue;
                 pushKey = state.pushKey;
                 renderPush();
                 // Don't overwrite a field while the DJ is editing it.

@@ -585,7 +585,6 @@ export class Room extends DurableObject<Env> {
         const djState = dj && {
             dj: true,
             connected: !!this.ctx.storage.kv.get("tokens"),
-            autoQueue: !!this.ctx.storage.kv.get("autoQueue"),
             pushKey: vapidPublicKey(this.env.VAPID_PRIVATE_JWK),
         };
         // Everyone sees the room's look; null means the page default.
