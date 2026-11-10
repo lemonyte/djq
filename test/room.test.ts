@@ -24,7 +24,7 @@ const rows = (id = roomId) =>
 
 let spotify: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
-    key = await room().login({ access_token: "tok", refresh_token: "r", expires_in: 3600 });
+    key = await room().login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, null);
     spotify = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = new URL(String(input));
         if (url.pathname.startsWith("/v1/tracks/")) {
@@ -239,7 +239,7 @@ describe("rooms", () => {
 
     it("keeps rooms apart", async () => {
         const other = env.ROOM.idFromName("user-d");
-        const otherKey = await room(other).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 });
+        const otherKey = await room(other).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, null);
         const { id } = await (
             await api("/api/requests", { uri: uri("o"), guestId: "guest-oooo" }, undefined, other)
         ).json<any>();
@@ -270,7 +270,7 @@ describe("auto-queue", () => {
         );
 
     beforeEach(async () => {
-        autoKey = await room(autoRoom).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 });
+        autoKey = await room(autoRoom).login({ access_token: "tok", refresh_token: "r", expires_in: 3600 }, null);
         await api("/api/settings", { autoQueue: true }, autoKey, autoRoom);
     });
 

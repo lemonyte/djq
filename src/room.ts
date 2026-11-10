@@ -127,12 +127,19 @@ export class Room extends DurableObject<Env> {
 
     // RPC from the Worker's login callback: store this account's Spotify tokens and return the room's DJ key.
     // The key is created once, so logging in again with the same Spotify account gets the same key back.
-    async login(token: { access_token: string; refresh_token?: string; expires_in: number }): Promise<string> {
+    // The room is named after the DJ until they pick a name; Spotify's display_name can be null.
+    async login(
+        token: { access_token: string; refresh_token?: string; expires_in: number },
+        displayName: string | null,
+    ): Promise<string> {
         this.saveTokens(token);
         let key = this.ctx.storage.kv.get<string>("djKey");
         if (!key) {
             key = crypto.randomUUID();
             this.ctx.storage.kv.put("djKey", key);
+        }
+        if (!this.ctx.storage.kv.get<string>("name") && displayName) {
+            this.ctx.storage.kv.put("name", `${displayName}'s Room`);
         }
         this.broadcast();
         await this.ctx.storage.setAlarm(Date.now());

@@ -57,10 +57,11 @@ async function route(req: Request, env: Env): Promise<Response> {
         if (!me.ok) {
             throw new HttpError(502, `Spotify profile error ${me.status}: ${(await me.text()).slice(0, 200)}`);
         }
+        const userProfile = await me.json<{ account_id: string; display_name: string | null }>();
         // One room per Spotify account. The hex id hides the account name and needs no lookup table.
         // shortcut: room URLs are 64 hex chars, fine inside a QR code; add a short-slug lookup if people need to type them
-        const id = env.ROOM.idFromName((await me.json<{ id: string }>()).id);
-        const key = await env.ROOM.get(id).login(token);
+        const id = env.ROOM.idFromName(userProfile.account_id);
+        const key = await env.ROOM.get(id).login(token, userProfile.display_name);
         return redirect(`${url.origin}/r/${id}/dj#key=${key}`, {
             "Set-Cookie": `oauth_state=; Path=/auth; Max-Age=0; HttpOnly; SameSite=Lax${secure}`,
         });
