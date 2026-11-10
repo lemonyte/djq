@@ -6,6 +6,14 @@
         "directory": "public",
         "binding": "ASSETS",
     },
+    "workers_dev": false,
+    "preview_urls": true,
+    "routes": [
+        {
+            "pattern": "djq.lemonyte.com",
+            "custom_domain": true,
+        },
+    ],
     "durable_objects": {
         "bindings": [
             {
@@ -23,6 +31,4 @@
     "observability": {
         "enabled": true,
     },
-    "workers_dev": false,
-    "preview_urls": true,
 }
