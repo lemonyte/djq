@@ -80,7 +80,10 @@ export function applyRoom(room, subtitle) {
     const name = room.name ?? DEFAULT_ROOM_NAME;
     byId("title").textContent = name;
     document.title = `${name} · ${subtitle}`;
-    byId("search-heading").textContent = room.autoQueue ? "Queue a song" : "Request a song";
+    const searchHeading = byId("search-heading");
+    if (searchHeading) {
+        searchHeading.textContent = room.autoQueue ? "Queue a song" : "Request a song";
+    }
     const rootStyle = document.documentElement.style;
     if (room.accent) {
         rootStyle.setProperty("--accent", room.accent);
