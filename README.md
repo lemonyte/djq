@@ -9,6 +9,10 @@ The DJ queues or rejects requests; queued tracks go straight into that DJ's Spot
 With **Add requests to the queue automatically** ticked, requests skip approval and go straight into the queue.
 Before each party, the DJ clicks **Clear all requests**.
 
+In **Settings**, the DJ can turn on notifications for new requests on each of their devices.
+On iPhone and iPad this only works after adding the DJ console to the Home Screen (Share, then Add to Home Screen)
+and opening it from there.
+
 ## Setup
 
 1. Create an app at <https://developer.spotify.com/dashboard> (Web API). Add redirect URIs
@@ -23,6 +27,8 @@ Before each party, the DJ clicks **Clear all requests**.
 ```bash
 bunx wrangler secret put SPOTIFY_CLIENT_ID
 bunx wrangler secret put SPOTIFY_CLIENT_SECRET
+bunx @pushforge/builder vapid       # prints a key pair for notifications
+bunx wrangler secret put VAPID_PRIVATE_JWK   # paste the "Private Key (JWK)" line
 bun run deploy
 ```
 

@@ -1,3 +1,4 @@
+import { buildPushHTTPRequest } from "@pushforge/builder";
 import { DurableObject } from "cloudflare:workers";
 
 const API = "https://api.spotify.com/v1";
@@ -7,10 +8,16 @@ const MAX_PENDING = 3;
 const POLL_MS = 10_000;
 const MAX_NAME = 60;
 const ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
+const MAX_PUSH_DEVICES = 10;
+// Only real browser push services, so a DJ key can't make the server POST to arbitrary URLs.
+const PUSH_HOST_RE =
+    /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com|[\w-]+\.push\.apple\.com|[\w-]+\.notify\.windows\.com)$/;
+const BASE64URL_RE = /^[A-Za-z0-9_-]{16,200}={0,2}$/;
 
 type Tokens = { access: string; refresh: string; expires: number };
 type Track = { uri: string; title: string; artist: string; art: string | null };
 type Attachment = { dj: boolean; guest: string | null };
+type PushDevice = { endpoint: string; p256dh: string; auth: string };
 
 export class HttpError extends Error {
     constructor(
@@ -31,6 +38,36 @@ export function tokenFetch(env: Env, params: Record<string, string>): Promise<Re
         },
         body: new URLSearchParams(params),
     });
+}
+
+function base64UrlToBytes(text: string): Uint8Array {
+    return Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0));
+}
+
+// The key browsers subscribe with: the VAPID public key as an uncompressed P-256 point (0x04 || x || y), base64url.
+// Derived from the private JWK so there's only one secret to set. Null when push isn't configured.
+function vapidPublicKey(privateJwk: string | undefined): string | null {
+    if (!privateJwk) {
+        return null;
+    }
+    const { x, y } = JSON.parse(privateJwk);
+    const point = new Uint8Array([0x04, ...base64UrlToBytes(x), ...base64UrlToBytes(y)]);
+    return btoa(String.fromCharCode(...point))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+}
+
+function isPushEndpoint(endpoint: unknown): endpoint is string {
+    if (typeof endpoint !== "string" || endpoint.length > 1000) {
+        return false;
+    }
+    try {
+        const url = new URL(endpoint);
+        return url.protocol === "https:" && PUSH_HOST_RE.test(url.hostname);
+    } catch {
+        return false;
+    }
 }
 
 function track(item: any): Track {
@@ -60,6 +97,11 @@ export class Room extends DurableObject<Env> {
                 request_id INTEGER NOT NULL,
                 guest_id TEXT NOT NULL,
                 PRIMARY KEY (request_id, guest_id)
+            );
+            CREATE TABLE IF NOT EXISTS push_devices (
+                endpoint TEXT PRIMARY KEY,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL
             );
         `);
     }
@@ -107,6 +149,18 @@ export class Room extends DurableObject<Env> {
                 throw new HttpError(401, "DJ key required");
             }
             return this.settings(await this.body(req));
+        }
+        if (path === "/api/push" && post) {
+            if (!dj) {
+                throw new HttpError(401, "DJ key required");
+            }
+            return this.addPushDevice(await this.body(req), url.origin);
+        }
+        if (path === "/api/push/remove" && post) {
+            if (!dj) {
+                throw new HttpError(401, "DJ key required");
+            }
+            return this.removePushDevice(await this.body(req));
         }
 
         const match = path.match(/^\/api\/requests\/(\d+)\/(vote|approve|reject)$/);
@@ -225,7 +279,8 @@ export class Room extends DurableObject<Env> {
             throw new HttpError(400, "Query must be 1-100 characters");
         }
         // shortcut: no caching of search results, add Cache API caching if Spotify starts returning 429
-        const results = await this.spotify(`/search?${new URLSearchParams({ q: query, type: "track", limit: "10" })}`);
+        const params = new URLSearchParams({ q: query, type: "track", limit: "10" });
+        const results = await this.spotify(`/search?${params.toString()}`);
         return Response.json((results?.tracks?.items ?? []).map(track));
     }
 
@@ -303,6 +358,7 @@ export class Room extends DurableObject<Env> {
                 // approve() put it back to pending (e.g. no active device), so the DJ handles it by hand
             }
         }
+        this.ctx.waitUntil(this.notifyDj(id)); // after the guest's response, not before it
         return response;
     }
 
@@ -392,6 +448,92 @@ export class Room extends DurableObject<Env> {
         return Response.json({});
     }
 
+    // --- push notifications ---
+
+    addPushDevice({ subscription }: Record<string, unknown>, origin: string): Response {
+        const { endpoint, keys } = (subscription ?? {}) as { endpoint?: unknown; keys?: Record<string, unknown> };
+        if (!isPushEndpoint(endpoint)) {
+            throw new HttpError(400, "Unsupported push service");
+        }
+        const { p256dh, auth } = keys ?? {};
+        if (
+            typeof p256dh !== "string" ||
+            !BASE64URL_RE.test(p256dh) ||
+            typeof auth !== "string" ||
+            !BASE64URL_RE.test(auth)
+        ) {
+            throw new HttpError(400, "Invalid push subscription keys");
+        }
+        const sql = this.ctx.storage.sql;
+        const known = sql.exec("SELECT 1 FROM push_devices WHERE endpoint = ?", endpoint).toArray().length > 0;
+        const count = sql.exec<{ count: number }>("SELECT COUNT(*) count FROM push_devices").one().count;
+        if (!known && count >= MAX_PUSH_DEVICES) {
+            throw new HttpError(429, `At most ${MAX_PUSH_DEVICES} devices can get notifications`);
+        }
+        sql.exec(
+            "INSERT OR REPLACE INTO push_devices (endpoint, p256dh, auth) VALUES (?, ?, ?)",
+            endpoint,
+            p256dh,
+            auth,
+        );
+        // Push services want a contact for the sender; the app's own address is one, and needs no config.
+        this.ctx.storage.kv.put("origin", origin);
+        return Response.json({});
+    }
+
+    removePushDevice({ endpoint }: Record<string, unknown>): Response {
+        if (typeof endpoint !== "string") {
+            throw new HttpError(400, "endpoint required");
+        }
+        this.ctx.storage.sql.exec("DELETE FROM push_devices WHERE endpoint = ?", endpoint);
+        return Response.json({});
+    }
+
+    // Tell the DJ's devices about a request that's waiting for approval. Errors are logged, never thrown:
+    // this runs after the guest already got their response.
+    async notifyDj(id: number) {
+        const privateJwk = this.env.VAPID_PRIVATE_JWK;
+        const origin = this.ctx.storage.kv.get<string>("origin");
+        const sql = this.ctx.storage.sql;
+        const request = sql
+            .exec<{ title: string; artist: string }>(
+                "SELECT title, artist FROM requests WHERE id = ? AND status = 'pending'",
+                id,
+            )
+            .toArray()[0];
+        if (!privateJwk || !origin || !request) {
+            return; // push not set up, or the request was auto-queued
+        }
+        const payload = {
+            title: "New song request",
+            body: `${request.title} · ${request.artist}`,
+            url: `/r/${this.ctx.id.toString()}/dj`,
+            tag: `request-${id}`, // a re-request replaces its old notification instead of stacking
+        };
+        // shortcut: one notification per request, fine for a party; batch them if a busy room buzzes the phone too much
+        const devices = sql.exec<PushDevice>("SELECT endpoint, p256dh, auth FROM push_devices").toArray();
+        await Promise.all(
+            devices.map(async (device) => {
+                try {
+                    const push = await buildPushHTTPRequest({
+                        privateJWK: privateJwk,
+                        subscription: { endpoint: device.endpoint, keys: { p256dh: device.p256dh, auth: device.auth } },
+                        message: { payload, adminContact: origin, options: { ttl: 3600, urgency: "high" } },
+                    });
+                    const res = await fetch(push.endpoint, { method: "POST", headers: push.headers, body: push.body });
+                    if (res.status === 404 || res.status === 410) {
+                        // The browser dropped this subscription (notifications turned off, app removed).
+                        sql.exec("DELETE FROM push_devices WHERE endpoint = ?", device.endpoint);
+                    } else if (!res.ok) {
+                        console.error("push failed", res.status, (await res.text()).slice(0, 200));
+                    }
+                } catch (error) {
+                    console.error("push failed", error);
+                }
+            }),
+        );
+    }
+
     guest(id: unknown): string {
         if (typeof id !== "string" || !GUEST_RE.test(id)) {
             throw new HttpError(400, "Invalid guestId");
@@ -436,6 +578,7 @@ export class Room extends DurableObject<Env> {
             dj: true,
             connected: !!this.ctx.storage.kv.get("tokens"),
             autoQueue: !!this.ctx.storage.kv.get("autoQueue"),
+            pushKey: vapidPublicKey(this.env.VAPID_PRIVATE_JWK),
         };
         // Everyone sees the room's look; null means the page default.
         const room = {

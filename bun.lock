@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "djq",
+      "dependencies": {
+        "@pushforge/builder": "2.0.5",
+      },
       "devDependencies": {
         "@cloudflare/vitest-plugin": "^1.6.0",
         "oxfmt": "^0.78.0",
@@ -243,6 +246,8 @@
     "@poppinss/dumper": ["@poppinss/dumper@0.6.5", "", { "dependencies": { "@poppinss/colors": "^4.1.5", "@sindresorhus/is": "^7.0.2", "supports-color": "^10.0.0" } }, "sha512-NBdYIb90J7LfOI32dOewKI1r7wnkiH6m920puQ3qHUeZkxNkQiFnXVWoE6YtFSv6QOiPPf7ys6i+HWWecDz7sw=="],
 
     "@poppinss/exception": ["@poppinss/exception@1.2.3", "", {}, "sha512-dCED+QRChTVatE9ibtoaxc+WkdzOSjYTKi/+uacHWIsfodVfpsueo3+DKpgU5Px8qXjgmXkSvhXvSCz3fnP9lw=="],
+
+    "@pushforge/builder": ["@pushforge/builder@2.0.5", "", { "bin": { "pushforge": "dist/lib/commandLine/keys.js" } }, "sha512-9Q6lBFWUMKUL5vBknwAt+nlS7eWCrNuf1lCMAhC1Iypn8gtYJ0rdVHAnsGFMxPKhbtgkgpU3r6UVduDTQ8jgzw=="],
 
     "@rolldown/binding-android-arm-eabi": ["@rolldown/binding-android-arm-eabi@1.2.16", "", { "os": "android", "cpu": "arm" }, "sha512-ia3DwAs0OsMGS7+IConptSiyk9pEXkOx/AbJ2n/lAGxH3QkWQus1t8d7gnAT38FCU2sQu8lUbeR6AiZFv4JxaA=="],
 

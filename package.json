@@ -12,6 +12,9 @@
         "fmt:check": "oxfmt --check",
         "types": "wrangler types src/worker-configuration.d.ts"
     },
+    "dependencies": {
+        "@pushforge/builder": "2.0.5"
+    },
     "devDependencies": {
         "@cloudflare/vitest-plugin": "^1.6.0",
         "oxfmt": "^0.78.0",

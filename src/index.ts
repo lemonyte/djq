@@ -30,7 +30,7 @@ async function route(req: Request, env: Env): Promise<Response> {
             redirect_uri: redirectUri,
             state,
         });
-        return redirect(`https://accounts.spotify.com/authorize?${params}`, {
+        return redirect(`https://accounts.spotify.com/authorize?${params.toString()}`, {
             "Set-Cookie": `oauth_state=${state}; Path=/auth; Max-Age=600; HttpOnly; SameSite=Lax${secure}`,
         });
     }
@@ -62,7 +62,7 @@ async function route(req: Request, env: Env): Promise<Response> {
         // shortcut: room URLs are 64 hex chars, fine inside a QR code; add a short-slug lookup if people need to type them
         const id = env.ROOM.idFromName(userProfile.account_id);
         const key = await env.ROOM.get(id).login(token, userProfile.display_name);
-        return redirect(`${url.origin}/r/${id}/dj#key=${key}`, {
+        return redirect(`${url.origin}/r/${id.toString()}/dj#key=${key}`, {
             "Set-Cookie": `oauth_state=; Path=/auth; Max-Age=0; HttpOnly; SameSite=Lax${secure}`,
         });
     }
@@ -87,6 +87,26 @@ async function route(req: Request, env: Env): Promise<Response> {
     }
     if (rest === "/dj") {
         return env.ASSETS.fetch(new URL("/dj", url));
+    }
+    if (rest === "/manifest.webmanifest") {
+        // Lets the DJ console be added to a phone's Home Screen, which iPhones require for notifications.
+        // The Home Screen app doesn't share storage with the browser, so the start URL carries the DJ key.
+        const key = url.searchParams.get("key");
+        const consolePath = `/r/${match[1]}/dj`;
+        const manifest = {
+            id: consolePath, // one app per room
+            name: "DJ Console",
+            short_name: "DJ Console",
+            start_url: key && /^[\w-]{1,100}$/.test(key) ? `${consolePath}#key=${key}` : consolePath,
+            scope: "/",
+            display: "standalone",
+            background_color: "#0f0f13",
+            theme_color: "#0f0f13",
+        };
+        // shortcut: no app icons, so phones use a screenshot or letter; add icons if the Home Screen tile matters
+        return Response.json(manifest, {
+            headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-store" },
+        });
     }
     if (rest.startsWith("/api/")) {
         return env.ROOM.get(id).fetch(new Request(new URL(rest + url.search, url), req));

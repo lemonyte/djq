@@ -5,6 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>DJ Room · DJ Console</title>
         <link rel="stylesheet" href="/style.css" />
+        <link id="manifest" rel="manifest" />
         <style>
             /* Phones: equal-width buttons with the icon above the label. Wider screens: one row of pills. */
             .toolbar {
@@ -48,6 +49,13 @@
                 }
             }
 
+            .push {
+                margin: 20px 0 0;
+            }
+            .push .hint {
+                margin: 0;
+                font-size: 0.9em;
+            }
             .hint {
                 color: var(--muted);
             }
@@ -124,11 +132,11 @@
                 color: var(--fg);
             }
             .field input[type="color"] {
-                width: 64px;
+                /* width: 64px;
                 height: 40px;
                 padding: 0;
                 border: 0;
-                background: none;
+                background: none; */
             }
             .check {
                 display: flex;
@@ -245,6 +253,11 @@
                     <input id="autoQueue" type="checkbox" />
                     Add requests to the queue automatically
                 </label>
+                <div class="field push">
+                    Notifications
+                    <button id="push" class="secondary" type="button" hidden></button>
+                    <p id="pushHint" class="hint"></p>
+                </div>
             </div>
         </dialog>
 
@@ -338,6 +351,91 @@
                 }
             };
 
+            // --- push notifications ---
+            // The manifest lets an iPhone add this console to the Home Screen, which it needs for notifications.
+            byId("manifest").href = `${base}/manifest.webmanifest?key=${encodeURIComponent(key)}`;
+
+            let pushKey = null; // the server's public key; null when push isn't set up there
+            const pushStored = `push:${base}`; // "on" when this device gets this room's notifications
+
+            function pushIsOn() {
+                try {
+                    return localStorage[pushStored] === "on";
+                } catch {
+                    return false;
+                }
+            }
+
+            function renderPush() {
+                const button = byId("push");
+                const hint = byId("pushHint");
+                const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+                button.hidden = !pushKey || !supported;
+                hint.textContent = "";
+                if (!pushKey) {
+                    hint.textContent = "Notifications aren't set up on this server.";
+                } else if (!supported) {
+                    hint.textContent =
+                        "This browser can't show notifications. On iPhone or iPad, add this page to your Home Screen " +
+                        "(Share, then Add to Home Screen) and open it from there.";
+                } else if (Notification.permission === "denied") {
+                    button.hidden = true;
+                    hint.textContent = "Notifications are blocked for this site. Allow them in your browser settings.";
+                } else {
+                    button.textContent = pushIsOn()
+                        ? "Turn off notifications on this device"
+                        : "Notify me about new requests";
+                }
+            }
+
+            function base64UrlToBytes(text) {
+                return Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0));
+            }
+
+            async function turnOnPush() {
+                // Called straight from the click, before any other await: Safari only asks for permission inside a tap.
+                if ((await Notification.requestPermission()) !== "granted") {
+                    throw new Error("Notifications weren't allowed");
+                }
+                const registration = await navigator.serviceWorker.register("/sw.js");
+                await navigator.serviceWorker.ready;
+                const subscription =
+                    (await registration.pushManager.getSubscription()) ??
+                    (await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: base64UrlToBytes(pushKey),
+                    }));
+                await api("/api/push", { body: { subscription: subscription.toJSON() }, key });
+                localStorage[pushStored] = "on";
+            }
+
+            async function turnOffPush() {
+                const registration = await navigator.serviceWorker.getRegistration("/");
+                const subscription = await registration?.pushManager.getSubscription();
+                if (subscription) {
+                    // Only this room forgets the device. The browser keeps its subscription, since other rooms
+                    // open in this browser may still use it.
+                    await api("/api/push/remove", { body: { endpoint: subscription.endpoint }, key });
+                }
+                delete localStorage[pushStored];
+            }
+
+            byId("push").onclick = async () => {
+                const button = byId("push");
+                button.disabled = true;
+                try {
+                    if (pushIsOn()) {
+                        await turnOffPush();
+                    } else {
+                        await turnOnPush();
+                    }
+                } catch (error) {
+                    toast(error.message);
+                }
+                button.disabled = false;
+                renderPush();
+            };
+
             byId("reset").onclick = () => {
                 if (confirm("Clear all requests and votes for a new party?")) {
                     api("/api/reset", { key }).catch((error) => toast(error.message));
@@ -367,6 +465,8 @@
                 connected = state.connected;
                 showSpotifyButton(connected ? "Disconnect Spotify" : "Connect Spotify", !connected);
                 byId("autoQueue").checked = state.autoQueue;
+                pushKey = state.pushKey;
+                renderPush();
                 // Don't overwrite a field while the DJ is editing it.
                 if (document.activeElement !== byId("roomName")) {
                     byId("roomName").value = state.room.name ?? "";
