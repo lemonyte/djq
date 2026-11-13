@@ -41,9 +41,11 @@ export function list(container, items, empty, render) {
     container.replaceChildren(...(items.length ? items.map(render) : [element("li", { class: "empty" }, empty)]));
 }
 
-export function toast(message) {
+// kind "success" shows it in the accent color instead of the error red.
+export function toast(message, kind = "error") {
     const node = byId("toast");
     node.textContent = message;
+    node.classList.toggle("success", kind === "success");
     node.style.display = "block";
     clearTimeout(toast.timer);
     toast.timer = setTimeout(() => (node.style.display = "none"), 4000);

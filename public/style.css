@@ -233,3 +233,30 @@ span.vote {
     width: 24px;
     height: 24px;
 }
+
+#toast.success {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+/* A request on its way: the button is disabled and its icon pulses until the server answers */
+button[aria-busy="true"] {
+    opacity: 1;
+}
+
+button[aria-busy="true"] svg {
+    animation: busy-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes busy-pulse {
+    to {
+        opacity: 0.3;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button[aria-busy="true"] svg {
+        animation: none;
+        opacity: 0.5;
+    }
+}

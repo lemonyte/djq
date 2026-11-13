@@ -104,6 +104,28 @@ describe("requests", () => {
         expect((await api("/api/requests", { uri: uri("y"), guestId: "guest-yyyy" })).status).toBe(404);
     });
 
+    it("retries a brief Spotify outage on reads, but never retries adding to the queue", async () => {
+        const normal = spotify.getMockImplementation()!;
+        let trackFailures = 1;
+        spotify.mockImplementation(async (input, init) => {
+            if (urlOf(input).includes("/v1/tracks/") && trackFailures-- > 0) {
+                return new Response("Service Unavailable", { status: 503 });
+            }
+            if (urlOf(input).includes("/me/player/queue") && init?.method === "POST") {
+                return new Response("Service Unavailable", { status: 503 });
+            }
+            return normal(input, init);
+        });
+        const res = await api("/api/requests", { uri: uri("r"), guestId: "guest-rrrr" });
+        expect(res.status).toBe(200);
+        const { id } = await res.json<any>();
+        expect((await api(`/api/requests/${id}/approve`, undefined, key)).status).toBe(502);
+        const queuePosts = spotify.mock.calls.filter(
+            ([input, init]) => urlOf(input).includes("/me/player/queue") && init?.method === "POST",
+        );
+        expect(queuePosts).toHaveLength(1);
+    });
+
     it("counts one vote per guest", async () => {
         const { id } = await (await api("/api/requests", { uri: uri("h"), guestId: "guest-hhhh" })).json<any>();
         await api(`/api/requests/${id}/vote`, { guestId: "guest-iiii" });

@@ -258,7 +258,16 @@ export class Room extends DurableObject<Env> {
     }
 
     async spotify(path: string, init: RequestInit = {}): Promise<any> {
-        const res = await fetch(API + path, { ...init, headers: { Authorization: `Bearer ${await this.token()}` } });
+        // Spotify returns brief 5xx blips; reads are safe to retry, but a retried add-to-queue could add the song twice.
+        const retries = (init.method ?? "GET") === "GET" ? 2 : 0;
+        let res: Response;
+        for (let attempt = 0; ; attempt++) {
+            res = await fetch(API + path, { ...init, headers: { Authorization: `Bearer ${await this.token()}` } });
+            if (res.status < 500 || attempt >= retries) {
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 300 * 3 ** attempt));
+        }
         const text = await res.text();
         if (!res.ok) {
             // 404 from the player API means no active device

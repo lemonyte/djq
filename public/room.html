@@ -105,10 +105,18 @@
                                 element(
                                     "span",
                                     { class: "actions" },
-                                    iconButton("addToQueue", `Request ${track.title}`, null, async () => {
+                                    iconButton("addToQueue", `Request ${track.title}`, null, async (event) => {
+                                        // Busy until the server answers, so a second tap can't send it again.
+                                        const button = event.currentTarget;
+                                        button.disabled = true;
+                                        button.setAttribute("aria-busy", "true");
                                         if (await send("/api/requests", { uri: track.uri, guestId })) {
                                             byId("q").value = "";
                                             byId("results").replaceChildren();
+                                            toast("Requested!", "success");
+                                        } else {
+                                            button.disabled = false;
+                                            button.removeAttribute("aria-busy");
                                         }
                                     }),
                                 ),
