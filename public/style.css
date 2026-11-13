@@ -34,6 +34,24 @@ h1 {
     overflow-wrap: anywhere;
 }
 
+h1#title {
+    position: relative;
+    width: fit-content;
+    margin-bottom: 16px;
+    color: var(--fg);
+}
+
+h1#title::after {
+    content: "";
+    position: absolute;
+    left: -4px;
+    right: -6px;
+    bottom: -9px;
+    height: 10px;
+    background: var(--accent);
+    mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%2012'%20preserveAspectRatio%3D'none'%3E%3Cpath%20d%3D'M2%208%20C%2040%204%2C%2090%203%2C%20135%206%20S%20186%209%2C%20198%203'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%20vector-effect%3D'non-scaling-stroke'%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+}
+
 header {
     margin-bottom: 16px;
 }
@@ -49,6 +67,10 @@ h2 {
     margin: 24px 0 8px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+h2#search-heading {
+    color: var(--fg);
 }
 
 ul {
@@ -74,10 +96,6 @@ li.track .noart {
     border-radius: 4px;
     flex: none;
     background: #333;
-}
-
-#now li.track {
-    box-shadow: var(--accent) 0 0 10px;
 }
 
 .meta {
@@ -149,6 +167,7 @@ input[type="search"] {
     border: 1px solid #333;
     background: var(--card);
     color: var(--fg);
+    box-shadow: var(--accent) 0 0 12px;
 }
 
 .badge {
